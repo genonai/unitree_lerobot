@@ -39,3 +39,14 @@ def test_inspire_1dof_cameras():
     assert "cam_right_high" in cfg.cameras
     assert "cam_left_wrist" in cfg.cameras
     assert "cam_right_wrist" in cfg.cameras
+
+
+def test_inspire_1dof_camera_to_image_key():
+    cfg = ROBOT_CONFIGS["Unitree_G1_Inspire_1DOF"]
+    expected = {
+        "color_0": "cam_left_high",
+        "color_1": "cam_right_high",
+        "color_2": "cam_left_wrist",
+        "color_3": "cam_right_wrist",
+    }
+    assert cfg.camera_to_image_key == expected

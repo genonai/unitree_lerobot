@@ -17,7 +17,7 @@ from unitree_lerobot.eval_robot.robot_control.robot_hand_unitree import (
 
 from unitree_lerobot.eval_robot.utils.episode_writer import EpisodeWriter
 
-from unitree_lerobot.eval_robot.robot_control.robot_hand_inspire import Inspire_Controller
+from unitree_lerobot.eval_robot.robot_control.robot_hand_inspire import Inspire_Controller, Inspire_1DOF_Controller
 from unitree_lerobot.eval_robot.robot_control.robot_hand_brainco import Brainco_Controller
 
 
@@ -64,6 +64,12 @@ EE_CONFIG: dict[str, dict[str, Any]] = {
         "shared_mem_type": "Array",
         "shared_mem_size": 6,
         # "out_len": 12,
+    },
+    "inspire1_1dof": {
+        "controller": Inspire_1DOF_Controller,
+        "dof": 1,
+        "shared_mem_type": "Value",
+        "init_value": 1.0,  # hand starts OPEN (safety: 1.0=open, 0.0=closed)
     },
 }
 
@@ -183,7 +189,7 @@ def setup_robot_interface(args: argparse.Namespace) -> dict[str, Any]:
         left_in, right_in = (
             (Array("d", spec["shared_mem_size"], lock=True), Array("d", spec["shared_mem_size"], lock=True))
             if mem_type == "array"
-            else (Value("d", 0.0, lock=True), Value("d", 0.0, lock=True))
+            else (Value("d", spec.get("init_value", 0.0), lock=True), Value("d", spec.get("init_value", 0.0), lock=True))
         )
 
         state_arr, action_arr = Array("d", out_len, lock=False), Array("d", out_len, lock=False)

@@ -185,3 +185,111 @@ class Inspire_Left_Hand_JointIndex(IntEnum):
     kLeftHandIndex = 9
     kLeftHandThumbBend = 10
     kLeftHandThumbRotation = 11
+
+
+class Inspire_1DOF_Controller:
+    """
+    Eval-side 1DOF grip controller for Inspire RH56DFQ hand.
+    Takes normalized [0,1] grip value from policy output, expands to 6 DOF.
+    DFX protocol only (matching existing eval-side Inspire_Controller).
+    """
+
+    def __init__(self, left_gripper_value_in, right_gripper_value_in,
+                 dual_gripper_data_lock=None, dual_gripper_state_out=None,
+                 dual_gripper_action_out=None, simulation_mode=False,
+                 fps=100.0):
+        logger_mp.info("Initialize Inspire_1DOF_Controller (eval)...")
+        self.fps = fps
+        self.simulation_mode = simulation_mode
+        self.sub_ready = False
+
+        if self.simulation_mode:
+            ChannelFactoryInitialize(1)
+        else:
+            ChannelFactoryInitialize(0)
+
+        self.HandCmd_publisher = ChannelPublisher(kTopicInspireCommand, MotorCmds_)
+        self.HandCmd_publisher.Init()
+        self.HandState_subscriber = ChannelSubscriber(kTopicInspireState, MotorStates_)
+        self.HandState_subscriber.Init()
+
+        self.left_hand_state_array = Array('d', Inspire_Num_Motors, lock=True)
+        self.right_hand_state_array = Array('d', Inspire_Num_Motors, lock=True)
+
+        self.subscribe_state_thread = threading.Thread(target=self._subscribe_hand_state)
+        self.subscribe_state_thread.daemon = True
+        self.subscribe_state_thread.start()
+
+        while not self.sub_ready:
+            time.sleep(0.01)
+            logger_mp.warning("[Inspire_1DOF_Controller] Waiting to subscribe dds...")
+        logger_mp.info("[Inspire_1DOF_Controller] Subscribe dds ok.")
+
+        self.control_thread = threading.Thread(
+            target=self._control_loop,
+            args=(left_gripper_value_in, right_gripper_value_in,
+                  self.left_hand_state_array, self.right_hand_state_array,
+                  dual_gripper_data_lock, dual_gripper_state_out, dual_gripper_action_out))
+        self.control_thread.daemon = True
+        self.control_thread.start()
+
+        logger_mp.info("Initialize Inspire_1DOF_Controller (eval) OK!")
+
+    def _subscribe_hand_state(self):
+        while True:
+            hand_msg = self.HandState_subscriber.Read()
+            if hand_msg is not None:
+                self.sub_ready = True
+                for idx, id in enumerate(Inspire_Left_Hand_JointIndex):
+                    self.left_hand_state_array[idx] = hand_msg.states[id].q
+                for idx, id in enumerate(Inspire_Right_Hand_JointIndex):
+                    self.right_hand_state_array[idx] = hand_msg.states[id].q
+            time.sleep(0.002)
+
+    def _control_loop(self, left_gripper_value_in, right_gripper_value_in,
+                      left_hand_state_array, right_hand_state_array,
+                      dual_gripper_data_lock=None, dual_gripper_state_out=None,
+                      dual_gripper_action_out=None):
+        self.running = True
+
+        self.hand_msg = MotorCmds_()
+        self.hand_msg.cmds = [
+            unitree_go_msg_dds__MotorCmd_()
+            for _ in range(len(Inspire_Right_Hand_JointIndex) + len(Inspire_Left_Hand_JointIndex))
+        ]
+        # Initialize open
+        for idx, id in enumerate(Inspire_Left_Hand_JointIndex):
+            self.hand_msg.cmds[id].q = 1.0
+        for idx, id in enumerate(Inspire_Right_Hand_JointIndex):
+            self.hand_msg.cmds[id].q = 1.0
+
+        try:
+            while self.running:
+                start_time = time.time()
+
+                # Read normalized [0,1] grip from policy (no trigger normalization needed)
+                left_grip = np.clip(left_gripper_value_in.value, 0.0, 1.0)
+                right_grip = np.clip(right_gripper_value_in.value, 0.0, 1.0)
+
+                # Expand to 6 DOF
+                for idx, id in enumerate(Inspire_Left_Hand_JointIndex):
+                    self.hand_msg.cmds[id].q = left_grip
+                for idx, id in enumerate(Inspire_Right_Hand_JointIndex):
+                    self.hand_msg.cmds[id].q = right_grip
+                self.HandCmd_publisher.Write(self.hand_msg)
+
+                # State: average 6D → 1D
+                left_state_avg = np.mean(np.array(left_hand_state_array[:]))
+                right_state_avg = np.mean(np.array(right_hand_state_array[:]))
+
+                if dual_gripper_data_lock is not None and dual_gripper_state_out is not None and dual_gripper_action_out is not None:
+                    with dual_gripper_data_lock:
+                        dual_gripper_state_out[0] = left_state_avg
+                        dual_gripper_state_out[1] = right_state_avg
+                        dual_gripper_action_out[0] = left_grip
+                        dual_gripper_action_out[1] = right_grip
+
+                elapsed = time.time() - start_time
+                time.sleep(max(0, (1 / self.fps) - elapsed))
+        finally:
+            logger_mp.info("Inspire_1DOF_Controller (eval) has been closed.")

@@ -123,7 +123,7 @@ class EvalRealConfig:
 
     # Basic control parameters
     arm: str = "G1_29"  # G1_29, G1_23
-    ee: str = "dex3"  # dex3, dex1, inspire1, brainco
+    ee: str = "dex3"  # dex3, dex1, inspire1, inspire1_1dof, brainco
 
     # Mode flags
     motion: bool = False

@@ -27,3 +27,18 @@ sys.modules.setdefault("lerobot.utils", _lerobot_utils)
 sys.modules.setdefault("lerobot.utils.constants", _lerobot_utils_constants)
 sys.modules.setdefault("lerobot.datasets", _lerobot_datasets)
 sys.modules.setdefault("lerobot.datasets.lerobot_dataset", _lerobot_datasets_lerobot_dataset)
+
+# ---------------------------------------------------------------------------
+# Stub xr_teleoperate dependencies for E2E recording tests
+# ---------------------------------------------------------------------------
+_logging_mp = types.ModuleType("logging_mp")
+_logging_mp.getLogger = lambda name=None: __import__("logging").getLogger(name)
+sys.modules.setdefault("logging_mp", _logging_mp)
+
+_rerun_sdk = types.ModuleType("rerun")
+sys.modules.setdefault("rerun", _rerun_sdk)
+
+# Stub the rerun_visualizer module that EpisodeWriter imports
+_rerun_viz = types.ModuleType("teleop.utils.rerun_visualizer")
+_rerun_viz.RerunLogger = MagicMock
+sys.modules.setdefault("teleop.utils.rerun_visualizer", _rerun_viz)

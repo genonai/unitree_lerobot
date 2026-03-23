@@ -304,6 +304,26 @@ G1_INSPIRE_1DOF_CONFIG = RobotConfig(
 )
 
 
+G1_INSPIRE_1DOF_HEAD_ONLY_CONFIG = RobotConfig(
+    motors=[
+        "kLeftShoulderPitch", "kLeftShoulderRoll", "kLeftShoulderYaw",
+        "kLeftElbow", "kLeftWristRoll", "kLeftWristPitch", "kLeftWristYaw",
+        "kRightShoulderPitch", "kRightShoulderRoll", "kRightShoulderYaw",
+        "kRightElbow", "kRightWristRoll", "kRightWristPitch", "kRightWristYaw",
+        "kLeftGripper", "kRightGripper",
+    ],
+    cameras=[
+        "cam_left_high", "cam_right_high",
+    ],
+    camera_to_image_key={
+        "color_0": "cam_left_high",
+        "color_1": "cam_right_high",
+    },
+    json_state_data_name=["left_arm.qpos", "right_arm.qpos", "left_ee.qpos", "right_ee.qpos"],
+    json_action_data_name=["left_arm.qpos", "right_arm.qpos", "left_ee.qpos", "right_ee.qpos"],
+)
+
+
 MOVEIBLE_LIFT_G1_DEX1_USEWAIST_CONFIG = RobotConfig(
     motors=[
         "kLeftShoulderPitch",
@@ -508,10 +528,12 @@ ROBOT_CONFIGS = {
     "Unitree_Z1_Dual": Z1_CONFIG,
     "Unitree_G1_Dex1": G1_DEX1_CONFIG,
     "Unitree_G1_Dex1_Sim": G1_DEX1_CONFIG_SIM,
+    "Unitree_G1_Gripper": G1_DEX1_CONFIG_SIM,  # HF dataset alias (e.g. G1_Dex1_PickPlaceRedBlock_Dataset_Sim)
     "Unitree_G1_Dex3": G1_DEX3_CONFIG,
     "Unitree_G1_Brainco": G1_BRAINCO_CONFIG,
     "Unitree_G1_Inspire": G1_INSPIRE_CONFIG,
     "Unitree_G1_Inspire_1DOF": G1_INSPIRE_1DOF_CONFIG,
+    "Unitree_G1_Inspire_1DOF_HeadOnly": G1_INSPIRE_1DOF_HEAD_ONLY_CONFIG,
     "Unitree_G1_MoveibleLift_Dex1_UseWaist": MOVEIBLE_LIFT_G1_DEX1_USEWAIST_CONFIG,
     "Unitree_G1_MoveibleLift_Dex1_NoUseWaist": MOVEIBLE_LIFT_G1_DEX1_NOUSEWAIST_CONFIG,
     "Unitree_G1_Lift_Dex1_UseWaist": LIFT_G1_DEX1_USEWAIST_CONFIG,

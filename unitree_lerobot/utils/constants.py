@@ -324,6 +324,26 @@ G1_INSPIRE_1DOF_HEAD_ONLY_CONFIG = RobotConfig(
 )
 
 
+G1_INSPIRE_1DOF_HEAD_ONLY_CONFIG = RobotConfig(
+    motors=[
+        "kLeftShoulderPitch", "kLeftShoulderRoll", "kLeftShoulderYaw",
+        "kLeftElbow", "kLeftWristRoll", "kLeftWristPitch", "kLeftWristYaw",
+        "kRightShoulderPitch", "kRightShoulderRoll", "kRightShoulderYaw",
+        "kRightElbow", "kRightWristRoll", "kRightWristPitch", "kRightWristYaw",
+        "kLeftGripper", "kRightGripper",
+    ],
+    cameras=[
+        "cam_left_high", "cam_right_high",
+    ],
+    camera_to_image_key={
+        "color_0": "cam_left_high",
+        "color_1": "cam_right_high",
+    },
+    json_state_data_name=["left_arm.qpos", "right_arm.qpos", "left_ee.qpos", "right_ee.qpos"],
+    json_action_data_name=["left_arm.qpos", "right_arm.qpos", "left_ee.qpos", "right_ee.qpos"],
+)
+
+
 MOVEIBLE_LIFT_G1_DEX1_USEWAIST_CONFIG = RobotConfig(
     motors=[
         "kLeftShoulderPitch",

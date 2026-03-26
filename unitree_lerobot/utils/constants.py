@@ -324,16 +324,38 @@ G1_INSPIRE_1DOF_HEAD_ONLY_CONFIG = RobotConfig(
 )
 
 
-G1_INSPIRE_1DOF_HEAD_ONLY_CONFIG = RobotConfig(
+G1_INSPIRE_HEAD_ONLY_CONFIG = RobotConfig(
     motors=[
-        "kLeftShoulderPitch", "kLeftShoulderRoll", "kLeftShoulderYaw",
-        "kLeftElbow", "kLeftWristRoll", "kLeftWristPitch", "kLeftWristYaw",
-        "kRightShoulderPitch", "kRightShoulderRoll", "kRightShoulderYaw",
-        "kRightElbow", "kRightWristRoll", "kRightWristPitch", "kRightWristYaw",
-        "kLeftGripper", "kRightGripper",
+        "kLeftShoulderPitch",
+        "kLeftShoulderRoll",
+        "kLeftShoulderYaw",
+        "kLeftElbow",
+        "kLeftWristRoll",
+        "kLeftWristPitch",
+        "kLeftWristYaw",
+        "kRightShoulderPitch",
+        "kRightShoulderRoll",
+        "kRightShoulderYaw",
+        "kRightElbow",
+        "kRightWristRoll",
+        "kRightWristPitch",
+        "kRightWristYaw",
+        "kLeftHandPinky",
+        "kLeftHandRing",
+        "kLeftHandMiddle",
+        "kLeftHandIndex",
+        "kLeftHandThumbBend",
+        "kLeftHandThumbRotation",
+        "kRightHandPinky",
+        "kRightHandRing",
+        "kRightHandMiddle",
+        "kRightHandIndex",
+        "kRightHandThumbBend",
+        "kRightHandThumbRotation",
     ],
     cameras=[
-        "cam_left_high", "cam_right_high",
+        "cam_left_high",
+        "cam_right_high",
     ],
     camera_to_image_key={
         "color_0": "cam_left_high",
@@ -554,6 +576,7 @@ ROBOT_CONFIGS = {
     "Unitree_G1_Inspire": G1_INSPIRE_CONFIG,
     "Unitree_G1_Inspire_1DOF": G1_INSPIRE_1DOF_CONFIG,
     "Unitree_G1_Inspire_1DOF_HeadOnly": G1_INSPIRE_1DOF_HEAD_ONLY_CONFIG,
+    "Unitree_G1_Inspire_HeadOnly": G1_INSPIRE_HEAD_ONLY_CONFIG,
     "Unitree_G1_MoveibleLift_Dex1_UseWaist": MOVEIBLE_LIFT_G1_DEX1_USEWAIST_CONFIG,
     "Unitree_G1_MoveibleLift_Dex1_NoUseWaist": MOVEIBLE_LIFT_G1_DEX1_NOUSEWAIST_CONFIG,
     "Unitree_G1_Lift_Dex1_UseWaist": LIFT_G1_DEX1_USEWAIST_CONFIG,

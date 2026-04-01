@@ -214,6 +214,7 @@ def create_empty_dataset(
     has_velocity: bool = False,
     has_effort: bool = False,
     dataset_config: DatasetConfig = DEFAULT_DATASET_CONFIG,
+    image_shapes: dict[str, tuple] | None = None,
 ) -> LeRobotDataset:
     motors = ROBOT_CONFIGS[robot_type].motors
     cameras = ROBOT_CONFIGS[robot_type].cameras
@@ -254,9 +255,10 @@ def create_empty_dataset(
         }
 
     for cam in cameras:
+        shape = (image_shapes or {}).get(cam, (480, 640, 3))
         features[f"observation.images.{cam}"] = {
             "dtype": mode,
-            "shape": (480, 640, 3),
+            "shape": shape,
             "names": [
                 "height",
                 "width",
@@ -325,6 +327,24 @@ def json_to_lerobot(
     if (HF_LEROBOT_HOME / repo_id).exists():
         shutil.rmtree(HF_LEROBOT_HOME / repo_id)
 
+    # Auto-detect image shapes from first episode
+    camera_to_image_key = ROBOT_CONFIGS[robot_type].camera_to_image_key
+    image_shapes = {}
+    task_dirs = sorted(glob.glob(str(raw_dir / "*")))
+    for task_dir in task_dirs:
+        ep_dirs = sorted(glob.glob(os.path.join(task_dir, "episode_*")))
+        if ep_dirs:
+            colors_dir = os.path.join(ep_dirs[0], "colors")
+            for img_key, cam_name in camera_to_image_key.items():
+                sample_imgs = sorted(glob.glob(os.path.join(colors_dir, f"*_{img_key}.jpg")))
+                if sample_imgs:
+                    img = cv2.imread(sample_imgs[0])
+                    if img is not None:
+                        image_shapes[cam_name] = img.shape  # (H, W, 3)
+            break
+    if image_shapes:
+        print(f"==> Auto-detected image shapes: {image_shapes}")
+
     dataset = create_empty_dataset(
         repo_id,
         robot_type=robot_type,
@@ -332,6 +352,7 @@ def json_to_lerobot(
         has_effort=False,
         has_velocity=False,
         dataset_config=dataset_config,
+        image_shapes=image_shapes,
     )
     dataset = populate_dataset(
         dataset,

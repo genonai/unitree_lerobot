@@ -52,6 +52,13 @@ import logging_mp
 logging_mp.basic_config(level=logging_mp.INFO)
 logger_mp = logging_mp.get_logger(__name__)
 
+# --- Grasp Primitive Constants (derived from 111 pill bottle episodes) ---
+GRASP_POSE_6D = np.array([0.394, 0.417, 0.444, 0.509, 0.521, 0.007], dtype=np.float32)
+OPEN_POSE_6D = np.array([0.661, 0.744, 0.802, 0.801, 0.796, 0.833], dtype=np.float32)
+LEFT_ARM_NEUTRAL = np.array([0.2202, 0.0827, 0.1005, -0.0562, -0.0338, -0.5399, -0.0936], dtype=np.float32)
+LEFT_HAND_NEUTRAL = np.array([0.5896, 0.8213, 0.8826, 0.9281, 0.9553, 0.8419], dtype=np.float32)
+GRIP_THRESHOLD = 0.5
+
 
 def eval_policy(
     cfg: EvalRealConfig,
@@ -116,6 +123,12 @@ def eval_policy(
             ]
         )
 
+        # Detect action dimension from dataset
+        action_dim = dataset.meta.shapes["action"][0]
+        is_8d_mode = (action_dim == 8)
+        if is_8d_mode:
+            logger_mp.info("8D mode detected: right_arm(7) + grip(1), using grasp primitive")
+
         # Get initial pose from the first step of the dataset
         from_idx = dataset.meta.episodes["dataset_from_index"][0]
         step = dataset[from_idx]
@@ -156,9 +169,16 @@ def eval_policy(
                         full_state = np.array(ee_shared_mem["state"][:])
                         left_ee_state = full_state[:ee_dof]
                         right_ee_state = full_state[ee_dof:]
-                state_tensor = torch.from_numpy(
-                    np.concatenate((current_arm_q, left_ee_state, right_ee_state), axis=0)
-                ).float()
+                if is_8d_mode:
+                    # 8D obs: right_arm(7) + grip(1)
+                    right_grip = float(np.mean(right_ee_state))
+                    state_tensor = torch.from_numpy(
+                        np.concatenate([current_arm_q[7:14], [right_grip]]).astype(np.float32)
+                    ).float()
+                else:
+                    state_tensor = torch.from_numpy(
+                        np.concatenate((current_arm_q, left_ee_state, right_ee_state), axis=0)
+                    ).float()
                 observation["observation.state"] = state_tensor
                 # 2. Get Action from Policy
                 action = predict_action(
@@ -174,22 +194,44 @@ def eval_policy(
                 )
                 action_np = action.cpu().numpy()
                 # 3. Execute Action
-                arm_action = action_np[:arm_dof]
-                tau = arm_ik.solve_tau(arm_action)
-                arm_ctrl.ctrl_dual_arm(arm_action, tau)
+                if is_8d_mode:
+                    # 8D → 26D reconstruction
+                    right_arm_action = action_np[:7]
+                    grip_signal = float(action_np[7])
+                    arm_action = np.concatenate([LEFT_ARM_NEUTRAL, right_arm_action])
+                    tau = arm_ik.solve_tau(arm_action)
+                    arm_ctrl.ctrl_dual_arm(arm_action, tau)
 
-                if cfg.ee:
-                    ee_action_start_idx = arm_dof
-                    left_ee_action = action_np[ee_action_start_idx : ee_action_start_idx + ee_dof]
-                    right_ee_action = action_np[ee_action_start_idx + ee_dof : ee_action_start_idx + 2 * ee_dof]
-                    # logger_mp.info(f"EE Action: left {left_ee_action}, right {right_ee_action}")
+                    if cfg.ee:
+                        if isinstance(ee_shared_mem["left"], SynchronizedArray):
+                            ee_shared_mem["left"][:] = LEFT_HAND_NEUTRAL.tolist()
+                            if grip_signal < GRIP_THRESHOLD:
+                                ee_shared_mem["right"][:] = GRASP_POSE_6D.tolist()
+                            else:
+                                ee_shared_mem["right"][:] = OPEN_POSE_6D.tolist()
+                        elif hasattr(ee_shared_mem["left"], "value"):
+                            ee_shared_mem["left"].value = float(np.mean(LEFT_HAND_NEUTRAL))
+                            if grip_signal < GRIP_THRESHOLD:
+                                ee_shared_mem["right"].value = float(np.mean(GRASP_POSE_6D))
+                            else:
+                                ee_shared_mem["right"].value = float(np.mean(OPEN_POSE_6D))
+                else:
+                    # Original 26D path
+                    arm_action = action_np[:arm_dof]
+                    tau = arm_ik.solve_tau(arm_action)
+                    arm_ctrl.ctrl_dual_arm(arm_action, tau)
 
-                    if isinstance(ee_shared_mem["left"], SynchronizedArray):
-                        ee_shared_mem["left"][:] = to_list(left_ee_action)
-                        ee_shared_mem["right"][:] = to_list(right_ee_action)
-                    elif hasattr(ee_shared_mem["left"], "value") and hasattr(ee_shared_mem["right"], "value"):
-                        ee_shared_mem["left"].value = to_scalar(left_ee_action)
-                        ee_shared_mem["right"].value = to_scalar(right_ee_action)
+                    if cfg.ee:
+                        ee_action_start_idx = arm_dof
+                        left_ee_action = action_np[ee_action_start_idx : ee_action_start_idx + ee_dof]
+                        right_ee_action = action_np[ee_action_start_idx + ee_dof : ee_action_start_idx + 2 * ee_dof]
+
+                        if isinstance(ee_shared_mem["left"], SynchronizedArray):
+                            ee_shared_mem["left"][:] = to_list(left_ee_action)
+                            ee_shared_mem["right"][:] = to_list(right_ee_action)
+                        elif hasattr(ee_shared_mem["left"], "value") and hasattr(ee_shared_mem["right"], "value"):
+                            ee_shared_mem["left"].value = to_scalar(left_ee_action)
+                            ee_shared_mem["right"].value = to_scalar(right_ee_action)
                 # save data
                 if cfg.save_data:
                     process_data_add(episode_writer, observation, current_arm_q, full_state, action, arm_dof, ee_dof)

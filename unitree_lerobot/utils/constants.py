@@ -366,6 +366,68 @@ G1_INSPIRE_HEAD_ONLY_CONFIG = RobotConfig(
 )
 
 
+G1_INSPIRE_HEAD_ONLY_MONO_CONFIG = RobotConfig(
+    motors=[
+        "kLeftShoulderPitch",
+        "kLeftShoulderRoll",
+        "kLeftShoulderYaw",
+        "kLeftElbow",
+        "kLeftWristRoll",
+        "kLeftWristPitch",
+        "kLeftWristYaw",
+        "kRightShoulderPitch",
+        "kRightShoulderRoll",
+        "kRightShoulderYaw",
+        "kRightElbow",
+        "kRightWristRoll",
+        "kRightWristPitch",
+        "kRightWristYaw",
+        "kLeftHandPinky",
+        "kLeftHandRing",
+        "kLeftHandMiddle",
+        "kLeftHandIndex",
+        "kLeftHandThumbBend",
+        "kLeftHandThumbRotation",
+        "kRightHandPinky",
+        "kRightHandRing",
+        "kRightHandMiddle",
+        "kRightHandIndex",
+        "kRightHandThumbBend",
+        "kRightHandThumbRotation",
+    ],
+    cameras=[
+        "cam_head",
+    ],
+    camera_to_image_key={
+        "color_0": "cam_head",
+    },
+    json_state_data_name=["left_arm.qpos", "right_arm.qpos", "left_ee.qpos", "right_ee.qpos"],
+    json_action_data_name=["left_arm.qpos", "right_arm.qpos", "left_ee.qpos", "right_ee.qpos"],
+)
+
+
+G1_INSPIRE_RIGHTARM_8D_MONO_CONFIG = RobotConfig(
+    motors=[
+        "kRightShoulderPitch",
+        "kRightShoulderRoll",
+        "kRightShoulderYaw",
+        "kRightElbow",
+        "kRightWristRoll",
+        "kRightWristPitch",
+        "kRightWristYaw",
+        "kRightGrip",
+    ],
+    cameras=[
+        "cam_head",
+    ],
+    camera_to_image_key={
+        "color_0": "cam_head",
+    },
+    json_state_data_name=["right_arm.qpos", "right_ee.qpos"],
+    json_action_data_name=["right_arm.qpos", "right_ee.qpos"],
+)
+
+
 MOVEIBLE_LIFT_G1_DEX1_USEWAIST_CONFIG = RobotConfig(
     motors=[
         "kLeftShoulderPitch",
@@ -577,6 +639,8 @@ ROBOT_CONFIGS = {
     "Unitree_G1_Inspire_1DOF": G1_INSPIRE_1DOF_CONFIG,
     "Unitree_G1_Inspire_1DOF_HeadOnly": G1_INSPIRE_1DOF_HEAD_ONLY_CONFIG,
     "Unitree_G1_Inspire_HeadOnly": G1_INSPIRE_HEAD_ONLY_CONFIG,
+    "Unitree_G1_Inspire_HeadOnly_Mono": G1_INSPIRE_HEAD_ONLY_MONO_CONFIG,
+    "Unitree_G1_Inspire_RightArm8D_Mono": G1_INSPIRE_RIGHTARM_8D_MONO_CONFIG,
     "Unitree_G1_MoveibleLift_Dex1_UseWaist": MOVEIBLE_LIFT_G1_DEX1_USEWAIST_CONFIG,
     "Unitree_G1_MoveibleLift_Dex1_NoUseWaist": MOVEIBLE_LIFT_G1_DEX1_NOUSEWAIST_CONFIG,
     "Unitree_G1_Lift_Dex1_UseWaist": LIFT_G1_DEX1_USEWAIST_CONFIG,

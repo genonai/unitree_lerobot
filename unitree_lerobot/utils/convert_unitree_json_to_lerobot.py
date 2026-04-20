@@ -45,7 +45,7 @@ DEFAULT_DATASET_CONFIG = DatasetConfig()
 
 
 class JsonDataset:
-    def __init__(self, data_dirs: Path, robot_type: str) -> None:
+    def __init__(self, data_dirs: Path, robot_type: str, resize: tuple[int, int] | None = None) -> None:
         """
         Initialize the dataset for loading and processing HDF5 files containing robot manipulation data.
 
@@ -63,6 +63,8 @@ class JsonDataset:
         self.json_state_data_name = ROBOT_CONFIGS[robot_type].json_state_data_name
         self.json_action_data_name = ROBOT_CONFIGS[robot_type].json_action_data_name
         self.camera_to_image_key = ROBOT_CONFIGS[robot_type].camera_to_image_key
+        self.depth_to_image_key = ROBOT_CONFIGS[robot_type].depth_to_image_key
+        self.resize = resize  # (H, W) target size, or None to keep original
 
     def _init_paths(self) -> None:
         """Initialize episode and task paths."""
@@ -158,10 +160,52 @@ class JsonDataset:
                 if image is None:
                     raise RuntimeError(f"Failed to read image: {image_path}")
 
+                if self.resize is not None:
+                    image = cv2.resize(image, (self.resize[1], self.resize[0]), interpolation=cv2.INTER_AREA)
                 image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 images[image_key].append(image_rgb)
 
         return images
+
+    def _parse_depths(self, episode_path: str, episode_data) -> dict[str, list[np.ndarray]]:
+        """Load depth frames as uint16 single-channel arrays."""
+        depths = defaultdict(list)
+
+        if not self.depth_to_image_key:
+            return depths
+
+        first_frame = episode_data["data"][0]
+        if "depths" not in first_frame or not first_frame["depths"]:
+            return depths
+
+        depth_keys = first_frame["depths"].keys()
+
+        for depth_key in depth_keys:
+            image_key = self.depth_to_image_key.get(depth_key)
+            if image_key is None:
+                continue
+
+            for sample_data in episode_data["data"]:
+                relative_path = sample_data["depths"].get(depth_key)
+                if not relative_path:
+                    continue
+
+                depth_path = os.path.join(episode_path, relative_path)
+                if not os.path.exists(depth_path):
+                    raise FileNotFoundError(f"Depth path does not exist: {depth_path}")
+
+                # Read 16-bit PNG: cv2.IMREAD_UNCHANGED preserves uint16
+                depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
+                if depth is None:
+                    raise RuntimeError(f"Failed to read depth: {depth_path}")
+
+                # Ensure (H, W, 1) shape for LeRobot feature convention
+                if depth.ndim == 2:
+                    depth = depth[:, :, np.newaxis]
+
+                depths[image_key].append(depth)
+
+        return depths
 
     def get_item(
         self,
@@ -185,6 +229,9 @@ class JsonDataset:
         # Load camera images
         cameras = self._parse_images(file_path, episode_data)
 
+        # Load depth frames (if available)
+        depth_cameras = self._parse_depths(file_path, episode_data)
+
         # Extract camera configuration
         cam_height, cam_width = next(img for imgs in cameras.values() if imgs for img in imgs).shape[:2]
         data_cfg = {
@@ -201,6 +248,7 @@ class JsonDataset:
             "state": state,
             "action": action,
             "cameras": cameras,
+            "depth_cameras": depth_cameras,
             "task": task,
             "data_cfg": data_cfg,
         }
@@ -215,6 +263,7 @@ def create_empty_dataset(
     has_effort: bool = False,
     dataset_config: DatasetConfig = DEFAULT_DATASET_CONFIG,
     image_shapes: dict[str, tuple] | None = None,
+    depth_shapes: dict[str, tuple] | None = None,
 ) -> LeRobotDataset:
     motors = ROBOT_CONFIGS[robot_type].motors
     cameras = ROBOT_CONFIGS[robot_type].cameras
@@ -266,6 +315,19 @@ def create_empty_dataset(
             ],
         }
 
+    # Depth features: stored as images (PNG), never video (lossy codecs destroy depth)
+    if depth_shapes:
+        for depth_cam, shape in depth_shapes.items():
+            features[f"observation.images.{depth_cam}"] = {
+                "dtype": "image",
+                "shape": shape,
+                "names": [
+                    "height",
+                    "width",
+                    "channel",
+                ],
+            }
+
     if Path(HF_LEROBOT_HOME / repo_id).exists():
         shutil.rmtree(HF_LEROBOT_HOME / repo_id)
 
@@ -286,14 +348,16 @@ def populate_dataset(
     dataset: LeRobotDataset,
     raw_dir: Path,
     robot_type: str,
+    resize: tuple[int, int] | None = None,
 ) -> LeRobotDataset:
-    json_dataset = JsonDataset(raw_dir, robot_type)
+    json_dataset = JsonDataset(raw_dir, robot_type, resize=resize)
     for i in tqdm.tqdm(range(len(json_dataset))):
         episode = json_dataset.get_item(i)
 
         state = episode["state"]
         action = episode["action"]
         cameras = episode["cameras"]
+        depth_cameras = episode["depth_cameras"]
         task = episode["task"]
         episode_length = episode["episode_length"]
 
@@ -306,6 +370,9 @@ def populate_dataset(
 
             for camera, img_array in cameras.items():
                 frame[f"observation.images.{camera}"] = img_array[i]
+
+            for depth_cam, depth_array in depth_cameras.items():
+                frame[f"observation.images.{depth_cam}"] = depth_array[i]
 
             frame["task"] = task
 
@@ -322,6 +389,7 @@ def json_to_lerobot(
     *,
     push_to_hub: bool = False,
     mode: Literal["video", "image"] = "video",
+    resize: tuple[int, int] | None = None,
     dataset_config: DatasetConfig = DEFAULT_DATASET_CONFIG,
 ):
     if (HF_LEROBOT_HOME / repo_id).exists():
@@ -340,10 +408,32 @@ def json_to_lerobot(
                 if sample_imgs:
                     img = cv2.imread(sample_imgs[0])
                     if img is not None:
-                        image_shapes[cam_name] = img.shape  # (H, W, 3)
+                        if resize is not None:
+                            image_shapes[cam_name] = (resize[0], resize[1], 3)
+                        else:
+                            image_shapes[cam_name] = img.shape  # (H, W, 3)
             break
     if image_shapes:
         print(f"==> Auto-detected image shapes: {image_shapes}")
+
+    # Auto-detect depth shapes from first episode
+    depth_to_image_key = ROBOT_CONFIGS[robot_type].depth_to_image_key
+    depth_shapes = {}
+    if depth_to_image_key:
+        for task_dir in task_dirs:
+            ep_dirs = sorted(glob.glob(os.path.join(task_dir, "episode_*")))
+            if ep_dirs:
+                depths_dir = os.path.join(ep_dirs[0], "depths")
+                for depth_key, depth_cam_name in depth_to_image_key.items():
+                    sample_depths = sorted(glob.glob(os.path.join(depths_dir, f"*_{depth_key}.png")))
+                    if sample_depths:
+                        depth = cv2.imread(sample_depths[0], cv2.IMREAD_UNCHANGED)
+                        if depth is not None:
+                            h, w = depth.shape[:2]
+                            depth_shapes[depth_cam_name] = (h, w, 1)
+                break
+    if depth_shapes:
+        print(f"==> Auto-detected depth shapes: {depth_shapes}")
 
     dataset = create_empty_dataset(
         repo_id,
@@ -353,11 +443,13 @@ def json_to_lerobot(
         has_velocity=False,
         dataset_config=dataset_config,
         image_shapes=image_shapes,
+        depth_shapes=depth_shapes,
     )
     dataset = populate_dataset(
         dataset,
         raw_dir,
         robot_type=robot_type,
+        resize=resize,
     )
 
     if push_to_hub:

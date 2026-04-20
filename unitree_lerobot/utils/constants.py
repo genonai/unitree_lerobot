@@ -8,6 +8,7 @@ class RobotConfig:
     camera_to_image_key: dict[str, str]
     json_state_data_name: list[str]
     json_action_data_name: list[str]
+    depth_to_image_key: dict[str, str] = dataclasses.field(default_factory=dict)
 
 
 Z1_CONFIG = RobotConfig(
@@ -403,6 +404,9 @@ G1_INSPIRE_HEAD_ONLY_MONO_CONFIG = RobotConfig(
     },
     json_state_data_name=["left_arm.qpos", "right_arm.qpos", "left_ee.qpos", "right_ee.qpos"],
     json_action_data_name=["left_arm.qpos", "right_arm.qpos", "left_ee.qpos", "right_ee.qpos"],
+    depth_to_image_key={
+        "depth_0": "cam_head_depth",
+    },
 )
 
 
@@ -425,6 +429,9 @@ G1_INSPIRE_RIGHTARM_8D_MONO_CONFIG = RobotConfig(
     },
     json_state_data_name=["right_arm.qpos", "right_ee.qpos"],
     json_action_data_name=["right_arm.qpos", "right_ee.qpos"],
+    depth_to_image_key={
+        "depth_0": "cam_head_depth",
+    },
 )
 
 

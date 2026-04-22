@@ -122,23 +122,34 @@ def load_episode_meta(ep_dir: Path) -> dict:
 
 
 def iter_parquet_rows(parquet_path: Path) -> Iterator[dict]:
-    """Yield per-frame dicts with fixed-size list<float32> state/action already unpacked."""
-    table = pq.read_table(parquet_path)
-    needed = {"observation.state", "action", "timestamp", "frame_index"}
-    missing = needed - set(table.column_names)
+    """Yield per-frame dicts with fixed-size list<float32> state/action already unpacked.
+
+    Reads only the columns the consolidator consumes (dropping episode_index
+    etc.) and streams the table in Arrow record batches rather than
+    materializing every column as a full Python list up-front. Per-episode
+    parquet files are small (~MB), but this keeps peak memory proportional
+    to one batch regardless of episode length and costs nothing.
+    """
+    needed = ["observation.state", "action", "timestamp", "frame_index"]
+    # Validate schema before materializing any batches so callers see a clean
+    # ValueError rather than an obscure pyarrow column-not-found.
+    schema = pq.read_schema(parquet_path)
+    missing = set(needed) - set(schema.names)
     if missing:
         raise ValueError(f"{parquet_path}: missing columns {missing}")
-    state_col = table.column("observation.state").to_pylist()
-    action_col = table.column("action").to_pylist()
-    ts_col = table.column("timestamp").to_pylist()
-    frame_idx_col = table.column("frame_index").to_pylist()
-    for i in range(table.num_rows):
-        yield {
-            "observation.state": np.asarray(state_col[i], dtype=np.float32),
-            "action": np.asarray(action_col[i], dtype=np.float32),
-            "timestamp": float(ts_col[i]),
-            "frame_index": int(frame_idx_col[i]),
-        }
+    table = pq.read_table(parquet_path, columns=needed)
+    for batch in table.to_batches():
+        state_col = batch.column("observation.state").to_pylist()
+        action_col = batch.column("action").to_pylist()
+        ts_col = batch.column("timestamp").to_pylist()
+        frame_idx_col = batch.column("frame_index").to_pylist()
+        for i in range(batch.num_rows):
+            yield {
+                "observation.state": np.asarray(state_col[i], dtype=np.float32),
+                "action": np.asarray(action_col[i], dtype=np.float32),
+                "timestamp": float(ts_col[i]),
+                "frame_index": int(frame_idx_col[i]),
+            }
 
 
 def iter_mp4_frames(mp4_path: Path) -> Iterator[np.ndarray]:
@@ -235,7 +246,14 @@ def consolidate(args: Args) -> int:
     total_frames = 0
     for i, ep_dir in enumerate(episode_dirs):
         meta = load_episode_meta(ep_dir)
-        task = args.task_override if args.task_override is not None else meta["task"]["goal"]
+        # Defensive .get() chain: our writer always emits meta["task"]["goal"],
+        # but a partially-written or externally-edited meta.json would raise a
+        # bare KeyError here. Chained .get() falls through to the existing
+        # empty-string guard below, which reports the offending episode.
+        if args.task_override is not None:
+            task = args.task_override
+        else:
+            task = (meta.get("task") or {}).get("goal")
         if not task:
             raise ValueError(f"episode {ep_dir.name}: empty task string")
 
@@ -326,7 +344,12 @@ def _mark_staging_consumed(staging_dir: Path) -> None:
 
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     consumed = staging_dir.parent / f"_staging.consumed.{ts}"
-    staging_dir.rename(consumed)
+    # shutil.move handles the cross-filesystem case transparently
+    # (falls back to copy+delete when rename(2) would EXDEV); for the
+    # normal same-parent-dir case this is equivalent to Path.rename.
+    # Cast to str: shutil.move's Path support on Python 3.10+ is fine
+    # but explicit str avoids any PathLike edge case.
+    shutil.move(str(staging_dir), str(consumed))
     print(f"[finalize] moved staging -> {consumed}")
 
 

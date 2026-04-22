@@ -272,16 +272,23 @@ def _add_episode_frames(
                 f"{ep_dir.name}: non-monotonic frame_index at position {n}: "
                 f"got {row['frame_index']}"
             )
-        # LeRobotDataset.add_frame expects task + timestamp inside the dict;
-        # it pops them before running feature validation (see
-        # lerobot/datasets/lerobot_dataset.py:1128-1132).
+        # Don't pass timestamp in the frame dict: lerobot's add_frame runs
+        # validate_frame(frame, self.features) BEFORE popping timestamp
+        # (lerobot_dataset.py:1122 runs before :1129's pop), so an extra
+        # "timestamp" key raises ValueError("Extra features: {'timestamp'}").
+        # lerobot auto-computes timestamp = frame_index / fps, which is
+        # uniform-spaced and matches what ACT/Pi0 assume for chunked action
+        # prediction. Our writer's monotonic timestamps (~33.78ms avg with
+        # jitter) aren't preserved, but the temporal-sync invariant
+        # (mp4 frames == parquet rows) already guarantees the sampling
+        # intent that ACT requires. "task" is also popped pre-validate, so
+        # that one is fine to pass.
         ds.add_frame(
             {
                 "observation.state": row["observation.state"],
                 "action": row["action"],
                 CAM_KEY: frame,
                 "task": task,
-                "timestamp": row["timestamp"],
             }
         )
         n += 1

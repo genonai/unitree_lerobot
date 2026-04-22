@@ -241,16 +241,22 @@ def test_consolidate_calls_add_frame_with_lockstep_rows_and_frames(
     assert mock_ds.save_episode.call_count == 2
 
     # Inspect first add_frame call — should carry the right keys and shapes.
+    # Note: "timestamp" must NOT be in the frame dict. lerobot's add_frame
+    # runs validate_frame BEFORE popping timestamp, so passing it trips
+    # "Extra features: {'timestamp'}". lerobot auto-computes uniform
+    # timestamps from frame_index / fps instead.
     first_call = mock_ds.add_frame.call_args_list[0]
     frame_dict = first_call.args[0]
     assert set(frame_dict.keys()) == {
-        "observation.state", "action", CAM_KEY, "task", "timestamp",
-    }
+        "observation.state", "action", CAM_KEY, "task",
+    }, f"unexpected keys in add_frame payload: {set(frame_dict.keys())}"
+    assert "timestamp" not in frame_dict, (
+        "timestamp must not be passed — lerobot's validate_frame rejects it"
+    )
     assert frame_dict["observation.state"].shape == (STATE_DIM,)
     assert frame_dict["action"].shape == (ACTION_DIM,)
     assert frame_dict[CAM_KEY].shape == (480, 640, 3)
     assert frame_dict["task"] == "pick"
-    assert frame_dict["timestamp"] == pytest.approx(0.0, abs=1e-6)
 
     # First frame of episode 1 carries the second task string.
     ep1_first_call = mock_ds.add_frame.call_args_list[5]  # index after 5-frame ep0
